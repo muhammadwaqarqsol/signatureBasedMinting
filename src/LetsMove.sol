@@ -9,6 +9,7 @@ import "./NFT.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {rewardTypes} from "./libraries/rewardTypes.sol";
 error InValidSignature();
+error claimNotForYou();
 contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
     using rewardTypes for rewardTypes.claimAmount;
     constructor() ERC20("Let's Move", "LMV") Ownable(msg.sender)EIP712("Let'sMove","1") {
@@ -24,6 +25,9 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
         isVerified=executeIfSignatureMatch(claim, uint8(Action.SignUp));
         if (!isVerified){
             revert InValidSignature();
+        }
+        if(!(claim._user==_to)){
+            revert claimNotForYou();
         }
         _mint(_to, claim.amount * 10 ** 18);
     }

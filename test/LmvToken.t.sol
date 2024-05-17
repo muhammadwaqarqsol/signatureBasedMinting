@@ -19,6 +19,9 @@ contract RewardToken is Test {
 
     rewardTypes.claimAmount public tempReward;
 
+    bytes32 public constant makeClaim_TypeHash=keccak256(
+        "ClaimAmount(address Owner,address _user,uint256 amount,uint256 nonce)"
+    );
     function setUp() public {
         createPrivateKey = 0xA11CE;
         creator = vm.addr(createPrivateKey);
@@ -36,11 +39,33 @@ contract RewardToken is Test {
 
     function test_SignatureMint() public {
         vm.prank(_earnToken.owner());
-        takeSignature(_earnToken.owner(),userone, 2, 1);
+        takeSignature(_earnToken.owner(),userone, 2, 1,makeClaim_TypeHash);
         vm.stopPrank();
-
-        
         vm.startPrank(userone);
+        _earnToken.mint(tempReward, userone);
+        vm.stopPrank();
+        console.log("user balance", _earnToken.balanceOf(userone));
+    }
+
+    function test_SignatureMint_butSomeoneElseClaim() public {
+        vm.prank(_earnToken.owner());
+        takeSignature(_earnToken.owner(),address(1), 2, 1,makeClaim_TypeHash);
+        vm.stopPrank();
+        vm.startPrank(userone);
+        bytes4 selector = bytes4(keccak256("claimNotForYou()"));
+        vm.expectRevert(selector);
+        _earnToken.mint(tempReward, userone);
+        vm.stopPrank();
+        console.log("user balance", _earnToken.balanceOf(userone));
+    }
+
+     function test_SignatureMint_but_signatureisnotfromOwner() public {
+        vm.prank(address(1));
+        takeSignature(address(1),userone, 2, 1,makeClaim_TypeHash);
+        vm.stopPrank();
+        vm.startPrank(userone);
+        bytes4 selector = bytes4(keccak256("InValidSignature()"));
+        vm.expectRevert(selector);
         _earnToken.mint(tempReward, userone);
         vm.stopPrank();
         console.log("user balance", _earnToken.balanceOf(userone));
@@ -50,7 +75,8 @@ contract RewardToken is Test {
         address _owner,
         address _user,
         uint256 amount,
-        uint256 nonce
+        uint256 nonce,
+        bytes32 orderhash
     ) public returns (uint8 v, bytes32 r, bytes32 s) {
         rewardTypes.claimAmount memory makeClaim = rewardTypes.claimAmount(
             _owner,
@@ -62,7 +88,7 @@ contract RewardToken is Test {
             0x00
         );
 
-        bytes32 digest = getTypedDataHash(makeClaim);
+        bytes32 digest = getTypedDataHash(makeClaim,orderhash);
         (v, r, s) = vm.sign(createPrivateKey, digest);
         makeClaim.v = v;
         makeClaim.r = r;
@@ -85,22 +111,25 @@ contract RewardToken is Test {
     }
 
     function getTypedDataHash(
-        rewardTypes.claimAmount memory makeClaim
+        rewardTypes.claimAmount memory makeClaim,
+        bytes32 orderhash
     ) public view returns (bytes32) {
         return keccak256(
             abi.encodePacked(
                 "\x19\x01",
                 domainHash(),
-                getStructHash(makeClaim)
+                getStructHash(makeClaim,orderhash)
             )
         );
     }
 
     function getStructHash(
-        rewardTypes.claimAmount memory makeClaim
+        rewardTypes.claimAmount memory makeClaim,
+        bytes32 orderhash
     ) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
+                orderhash,
                 makeClaim.owner,
                 makeClaim._user,
                 makeClaim.amount,

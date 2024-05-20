@@ -5,12 +5,14 @@ import {Test, console} from "forge-std/Test.sol";
 import {rewardTypes} from "../src/libraries/rewardTypes.sol";
 import "../src/LetsMove.sol";
 import "forge-std/console.sol";
+import "../src/NFT.sol";
 
 contract RewardToken is Test {
     using rewardTypes for rewardTypes.claimAmount;
 
     LMVToken public _earnToken;
-
+    NFT public nft_contract;
+    
     uint256 internal createPrivateKey;
     address internal creator;
 
@@ -29,7 +31,8 @@ contract RewardToken is Test {
         useronePrivateKey = 0xB0B;
         userone = vm.addr(useronePrivateKey);
         vm.startPrank(creator);
-        _earnToken = new LMVToken();
+        nft_contract= new NFT();
+        _earnToken = new LMVToken(address(nft_contract));
         vm.stopPrank();
     }
 

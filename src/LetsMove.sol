@@ -2,6 +2,7 @@
 pragma solidity 0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -34,7 +35,7 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
     event ParticipantEntered(uint256 indexed challengeId,address indexed user);
     event challengeWinner(uint256 indexed challengeId, address indexed winner, uint256 totalPool);
 
-    NFT private ChallengeNFT;
+    NFT public ChallengeNFT;
     uint256 public ChallengeCounter;
 
     //Mapping for claim amount
@@ -48,8 +49,9 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
     mapping (uint256 => mapping(address=>bool)) public challengeParticipants;
     
     
-    constructor() ERC20("Let's Move", "LMV") Ownable(msg.sender)EIP712("Let'sMove","1") {
+    constructor(address nftAddress) ERC20("Let's Move", "LMV") Ownable(msg.sender)EIP712("Let'sMove","1") {
             ChallengeCounter=0;
+            ChallengeNFT = NFT(nftAddress); 
     }
 
     
@@ -79,30 +81,36 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
         emit ClaimedAmount(claim._user, claim.amount);
     }
 
-    function createChallenge(uint256 entryFee,string memory tokenUri)public nonReentrant{
+    function createChallenge(uint256 entryFee,string memory tokenUri,address user)public nonReentrant{
+        if(msg.sender==address(0) || user==address(0)){
+            revert ZeroAddress();
+        }
         if(!(entryFee>0)){
             revert ZeroEntryFee();
         }
-        ChallengeNFT.createToken(tokenUri,msg.sender);
+        ChallengeNFT.createToken(tokenUri,user);
         ChallengeCounter+=1;
-        challengeEntryFee[ChallengeCounter]=entryFee;
+        challengeEntryFee[ChallengeCounter]=entryFee*10**18;
         challengeTotalPool[ChallengeCounter]=0;
         challengeActive[ChallengeCounter]=true;
 
-        emit ChallengeCreated(ChallengeCounter,msg.sender,entryFee,ChallengeCounter);
+        emit ChallengeCreated(ChallengeCounter,user,entryFee,ChallengeCounter);
 
     }
 
 
 
     function enterChallenge(uint256 challengeId)public nonReentrant{
+        if(msg.sender==address(0)){
+            revert ZeroAddress();
+        }
         if(!(challengeActive[challengeId])){
             revert NotActive();
         }
         if(!(balanceOf(msg.sender)>=challengeEntryFee[challengeId])){
             revert NotEnoughBalance();
         }
-        transferFrom(msg.sender, address(this), challengeEntryFee[challengeId]);
+        transfer(address(this), challengeEntryFee[challengeId]);
         challengeParticipants[challengeId][msg.sender]=true;
         challengeTotalPool[challengeId]+=challengeEntryFee[challengeId];
         emit ParticipantEntered(challengeId, msg.sender);
@@ -110,10 +118,13 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
 
 
     function concludeChallenge(uint256 challengeId,rewardTypes.claimAmount calldata claim)public nonReentrant{
+        if(msg.sender==address(0)){
+            revert ZeroAddress();
+        }
         if(!(challengeActive[challengeId])){
             revert NotActive();
         }
-        if(challengeParticipants[challengeId][claim._user]){
+        if(!(challengeParticipants[challengeId][claim._user])){
             revert NotInChallenge();
         }
         if(_isUserClaimNonceExecuted[claim._user][claim.nonce]){
@@ -138,7 +149,7 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
         }
         challengeActive[challengeId]=false;
         _isUserClaimNonceExecuted[claim._user][claim.nonce]=true;
-        transferFrom(address(this), claim._user, challengeTotalPool[challengeId]);
+        _transfer(address(this), claim._user, challengeTotalPool[challengeId]);
         ChallengeNFT.safeTransferFrom(ChallengeNFT.ownerOf(challengeId), claim._user, challengeId);
         emit challengeWinner(challengeId,claim._user,challengeTotalPool[challengeId]);
         challengeTotalPool[challengeId]=0;
@@ -159,18 +170,19 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
     }
 
     
-    function executeIfSignatureMatch(
-        rewardTypes.claimAmount calldata claim    
-        )internal view returns(bool){
+    function executeIfSignatureMatch(rewardTypes.claimAmount calldata claim)internal view returns(bool){
         bytes32 eip712DomainHash=domainHash();
+        
         bytes32 hashStruct;
-        hashStruct=generateHashforSignUp(owner(), claim._user, claim.amount,claim.nonce);
+        
+        hashStruct=generateHashForClaim(owner(), claim._user, claim.amount,claim.nonce);
+        
         bytes32 hash=keccak256(
             abi.encodePacked("\x19\x01",eip712DomainHash,hashStruct)
         );
-
+        
         address signer=ecrecover(hash, claim.v, claim.r, claim.s);
-
+        
         if(!(signer==owner())){
             revert InValidSignature();
         }
@@ -178,17 +190,18 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
         if(signer==address(0)){
             revert InValidSignature();
         }
+        
         return true;
     }
 
-    function generateHashforSignUp(address _owner,address _to,uint256 _amount,uint _nonce) internal pure returns(bytes32){
+    function generateHashForClaim(address _owner,address _to,uint256 _amount,uint _nonce) internal pure returns(bytes32){
         bytes32 hashStruct=keccak256(
-        abi.encode(keccak256("ClaimAmount(address Owner,address _user,uint256 amount,uint256 nonce)"),
-        _owner,
-        _to,
-        _amount,
-        _nonce
-        )
+            abi.encode(keccak256("ClaimAmount(address Owner,address _user,uint256 amount,uint256 nonce)"),
+            _owner,
+            _to,
+            _amount,
+            _nonce
+            )
         );
         return hashStruct;
     }

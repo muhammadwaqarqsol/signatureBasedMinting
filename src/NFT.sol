@@ -4,7 +4,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
 contract NFT is ERC721, ERC721URIStorage {
-    uint256 public _tokenIds; // Tracking the no of tokens minted
+    uint256 public _tokenId; // Tracking the no of tokens minted
 
     constructor() ERC721("LetsMove", "LMV") {}
 
@@ -19,17 +19,20 @@ contract NFT is ERC721, ERC721URIStorage {
     function createToken(string memory _tokenURI, address _to) public returns (uint256) {
         require(msg.sender != address(0), "Has Zero Address");
         require(bytes(_tokenURI).length > 0, "Empty URI");
-        uint256 newTokenId = _tokenIds + 1; // Increment the tokenIds counter
+        _tokenId += 1; // Increment the tokenIds counter
+        uint256 newTokenId=_tokenId;      
         _mint(_to, newTokenId); // mint the token to the address
         _setTokenURI(newTokenId, _tokenURI); // set the tokenURI to the tokenId.
         return newTokenId;
     }
-/**
+    
+    /**
      * @dev See {IERC721Metadata-tokenURI}.
      */
     function tokenURI(uint256 tokenId) public view virtual override(ERC721, ERC721URIStorage) returns (string memory) {
         return super.tokenURI(tokenId);
     }
+    
     /**
      * @dev See {IERC165-supportsInterface}.
      */

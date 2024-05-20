@@ -5,57 +5,166 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "./NFT.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {rewardTypes} from "./libraries/rewardTypes.sol";
-error InValidSignature();
-error claimNotForYou();
-contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
-    using rewardTypes for rewardTypes.claimAmount;
-    constructor() ERC20("Let's Move", "LMV") Ownable(msg.sender)EIP712("Let'sMove","1") {
-    }
 
-    enum Action{
-        SignUp
+import "./NFT.sol";
+import {rewardTypes} from "./libraries/rewardTypes.sol";
+
+error InValidSignature();
+error UnAuthorized();
+error AlreadyExecuted();
+error ZeroAddress();
+error Failed();
+error ZeroAmount();
+error ZeroEntryFee();
+error NotActive();
+error NotEnoughBalance();
+error ApprovalRequired();
+error NotInChallenge();
+
+contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
+    
+
+    using rewardTypes for rewardTypes.claimAmount;
+    //event for ClaimAmount
+    event ClaimedAmount(address indexed user, uint256 amount);
+
+    //event for challenge
+    event ChallengeCreated(uint256 indexed challengeId, address indexed creator, uint256 entryFee, uint256 nftId);
+    event ParticipantEntered(uint256 indexed challengeId,address indexed user);
+    event challengeWinner(uint256 indexed challengeId, address indexed winner, uint256 totalPool);
+
+    NFT private ChallengeNFT;
+    uint256 public ChallengeCounter;
+
+    //Mapping for claim amount
+    mapping(address => mapping(uint256 => bool)) private _isUserClaimNonceExecuted;
+
+
+    //mapping for Challenge 
+    mapping (uint256 => uint256) public challengeEntryFee;
+    mapping (uint256 => uint256) public challengeTotalPool;
+    mapping (uint256 => bool)    public challengeActive;
+    mapping (uint256 => mapping(address=>bool)) public challengeParticipants;
+    
+    
+    constructor() ERC20("Let's Move", "LMV") Ownable(msg.sender)EIP712("Let'sMove","1") {
+            ChallengeCounter=0;
     }
 
     
     function mint(rewardTypes.claimAmount calldata claim,address _to) public nonReentrant{
+        if(msg.sender==address(0)){
+            revert ZeroAddress();
+        }
+        if(_isUserClaimNonceExecuted[claim._user][claim.nonce]){
+            revert AlreadyExecuted();
+        }
         bool isVerified;
-        isVerified=executeIfSignatureMatch(claim, uint8(Action.SignUp));
+        isVerified=executeIfSignatureMatch(claim);
         if (!isVerified){
             revert InValidSignature();
         }
-        if(!(claim._user==_to)){
-            revert claimNotForYou();
+        if(claim._user==address(0)){
+            revert ZeroAddress();
         }
+        if(claim.amount==0){
+            revert ZeroAmount();
+        }
+        if(!(claim._user==_to)){
+            revert UnAuthorized();
+        }
+        _isUserClaimNonceExecuted[claim._user][claim.nonce]=true;
         _mint(_to, claim.amount * 10 ** 18);
+        emit ClaimedAmount(claim._user, claim.amount);
+    }
+
+    function createChallenge(uint256 entryFee,string memory tokenUri)public nonReentrant{
+        if(!(entryFee>0)){
+            revert ZeroEntryFee();
+        }
+        ChallengeNFT.createToken(tokenUri,msg.sender);
+        ChallengeCounter+=1;
+        challengeEntryFee[ChallengeCounter]=entryFee;
+        challengeTotalPool[ChallengeCounter]=0;
+        challengeActive[ChallengeCounter]=true;
+
+        emit ChallengeCreated(ChallengeCounter,msg.sender,entryFee,ChallengeCounter);
+
+    }
+
+
+
+    function enterChallenge(uint256 challengeId)public nonReentrant{
+        if(!(challengeActive[challengeId])){
+            revert NotActive();
+        }
+        if(!(balanceOf(msg.sender)>=challengeEntryFee[challengeId])){
+            revert NotEnoughBalance();
+        }
+        transferFrom(msg.sender, address(this), challengeEntryFee[challengeId]);
+        challengeParticipants[challengeId][msg.sender]=true;
+        challengeTotalPool[challengeId]+=challengeEntryFee[challengeId];
+        emit ParticipantEntered(challengeId, msg.sender);
+    }
+
+
+    function concludeChallenge(uint256 challengeId,rewardTypes.claimAmount calldata claim)public nonReentrant{
+        if(!(challengeActive[challengeId])){
+            revert NotActive();
+        }
+        if(challengeParticipants[challengeId][claim._user]){
+            revert NotInChallenge();
+        }
+        if(_isUserClaimNonceExecuted[claim._user][claim.nonce]){
+            revert AlreadyExecuted();
+        }
+        bool isVerified;
+        isVerified=executeIfSignatureMatch(claim);
+         if (!isVerified){
+            revert InValidSignature();
+        }
+        if(claim._user==address(0)){
+            revert ZeroAddress();
+        }
+        if(claim.amount==0){
+            revert ZeroAmount();
+        }
+        if(!(claim._user==msg.sender)){
+            revert UnAuthorized();
+        }
+        if(!(ChallengeNFT.getApproved(challengeId)==address(this))){
+            revert ApprovalRequired();
+        }
+        challengeActive[challengeId]=false;
+        _isUserClaimNonceExecuted[claim._user][claim.nonce]=true;
+        transferFrom(address(this), claim._user, challengeTotalPool[challengeId]);
+        ChallengeNFT.safeTransferFrom(ChallengeNFT.ownerOf(challengeId), claim._user, challengeId);
+        emit challengeWinner(challengeId,claim._user,challengeTotalPool[challengeId]);
+        challengeTotalPool[challengeId]=0;
     }
 
     function domainHash() internal view returns (bytes32) {
-    bytes32 hash = keccak256(
-        abi.encode(
-            keccak256(
-                "EIP712Domain(string name,string version,address verifyingContract)"
-            ),
-            keccak256(bytes("Let'sMove")),
-            keccak256(bytes("1")),
-            address(this)  // Change to address(this) to match LMVToken
-        )
-    );
-    return hash;
-}
+        bytes32 hash = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,address verifyingContract)"
+                ),
+                keccak256(bytes("Let'sMove")),
+                keccak256(bytes("1")),
+                address(this)  // Change to address(this) to match LMVToken
+            )
+        );
+        return hash;
+    }
 
     
     function executeIfSignatureMatch(
-        rewardTypes.claimAmount calldata claim,
-        uint8 actionChoice
-    )internal view returns(bool){
+        rewardTypes.claimAmount calldata claim    
+        )internal view returns(bool){
         bytes32 eip712DomainHash=domainHash();
         bytes32 hashStruct;
-        if(actionChoice==0){
-            hashStruct=generateHashforSignUp(owner(), claim._user, claim.amount,claim.nonce);
-        }
+        hashStruct=generateHashforSignUp(owner(), claim._user, claim.amount,claim.nonce);
         bytes32 hash=keccak256(
             abi.encodePacked("\x19\x01",eip712DomainHash,hashStruct)
         );

@@ -52,7 +52,7 @@ contract RewardToken is Test {
         takeSignature(_earnToken.owner(),address(1), 2, 1,makeClaim_TypeHash);
         vm.stopPrank();
         vm.startPrank(userone);
-        bytes4 selector = bytes4(keccak256("claimNotForYou()"));
+        bytes4 selector = bytes4(keccak256("UnAuthorized()"));
         vm.expectRevert(selector);
         _earnToken.mint(tempReward, userone);
         vm.stopPrank();
@@ -71,6 +71,44 @@ contract RewardToken is Test {
         console.log("user balance", _earnToken.balanceOf(userone));
     }
 
+    function test_SignatureMint_but_ClaimingsameAmountAgain() public {
+        vm.prank(_earnToken.owner());
+        takeSignature(_earnToken.owner(),userone, 2, 1,makeClaim_TypeHash);
+        vm.stopPrank();
+        vm.startPrank(userone);
+        _earnToken.mint(tempReward, userone);
+        bytes4 selector = bytes4(keccak256("AlreadyExecuted()"));
+        vm.expectRevert(selector);
+        _earnToken.mint(tempReward, userone);
+        vm.stopPrank();
+        console.log("user balance", _earnToken.balanceOf(userone));
+    }
+
+    function test_SignatureMint_but_ClaimingwithZeroAddress() public {
+        vm.prank(_earnToken.owner());
+        takeSignature(_earnToken.owner(),address(0), 2, 1,makeClaim_TypeHash);
+        vm.stopPrank();
+        vm.startPrank(address(0));
+        bytes4 selector = bytes4(keccak256("ZeroAddress()"));
+        vm.expectRevert(selector);
+        _earnToken.mint(tempReward, address(0));
+        vm.stopPrank();
+        console.log("user balance", _earnToken.balanceOf(userone));
+    }
+
+
+
+    function test_SignatureMint_but_SenderisZeroAddress() public {
+        vm.prank(_earnToken.owner());
+        takeSignature(_earnToken.owner(),userone, 2, 1,makeClaim_TypeHash);
+        vm.stopPrank();
+        vm.startPrank(address(0));
+        bytes4 selector = bytes4(keccak256("ZeroAddress()"));
+        vm.expectRevert(selector);
+        _earnToken.mint(tempReward, userone);
+        vm.stopPrank();
+        console.log("user balance", _earnToken.balanceOf(userone));
+    }
     function takeSignature(
         address _owner,
         address _user,

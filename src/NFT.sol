@@ -26,6 +26,22 @@ contract NFT is ERC721, ERC721URIStorage {
         return newTokenId;
     }
     
+      function mintAndTransfer(
+        address _creator,
+        address _to,
+        string memory _tokenURI
+    )  external returns(uint)  {
+        require(_creator != address(0),"Has Zero Address");
+        require(_to != _creator,"Have same Address");
+        require(_to != address(0),"Have zero address");
+        _tokenId += 1; // Increment the tokenIds counter
+        uint256 newTokenId = _tokenId;
+        _safeMint(_creator, newTokenId);
+        _setTokenURI(newTokenId, _tokenURI);
+        _transfer(_creator, _to, newTokenId);
+        return(newTokenId);
+    }
+
     /**
      * @dev See {IERC721Metadata-tokenURI}.
      */

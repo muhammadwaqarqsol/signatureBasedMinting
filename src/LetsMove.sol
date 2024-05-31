@@ -85,6 +85,13 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
     //mapping for maintaining the challenge participants in the particular challange
     mapping (uint256 => mapping(address=>bool)) public challengeParticipants;
     
+
+
+    enum Action{
+        Buy,
+        ClaimAmount
+    }
+
     /**
      * Constructor for initializing the LMVToken contract with the provided NFT contract address.
      * Sets the ChallengeCounter to 0 and assigns the NFT contract instance to ChallengeNFT.
@@ -148,7 +155,6 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
         challengeActive[ChallengeCounter]=true;
 
         emit ChallengeCreated(ChallengeCounter,user,entryFee,ChallengeCounter);
-
     }
 
     /**
@@ -232,6 +238,19 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
             )
         );
         return hash;
+    }
+
+
+    function executeIfAASignatureMatch() internal pure returns(bool){
+        bytes32 hashStruct;
+        hashStruct=keccak256(
+            abi.encode(
+                keccak256(
+                    "ClaimAmount(address Owner,address _user,uint256 amount,uint256 nonce)"
+                )
+            )
+        );
+        return true;
     }
 
     /**

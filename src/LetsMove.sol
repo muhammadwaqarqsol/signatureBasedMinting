@@ -7,7 +7,8 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
 import "./NFT.sol";
-import {rewardTypes} from "./libraries/rewardTypes.sol";
+import {rewardType} from "./libraries/rewardTypes.sol";
+import {productType} from "./libraries/productTypes.sol";
 
 error InValidSignature();
 error UnAuthorized();
@@ -27,7 +28,9 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
      * Using the rewardTypes library for the claimAmount struct.
      * Declares an event for ClaimAmount.
      */
-    using rewardTypes for rewardTypes.claimAmount;
+    using rewardType for rewardType.claimAmount;
+    using productType for productType.productBuying;
+    using productType for productType.productListing;
 
     
     /**
@@ -86,12 +89,6 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
     mapping (uint256 => mapping(address=>bool)) public challengeParticipants;
     
 
-
-    enum Action{
-        Buy,
-        ClaimAmount
-    }
-
     /**
      * Constructor for initializing the LMVToken contract with the provided NFT contract address.
      * Sets the ChallengeCounter to 0 and assigns the NFT contract instance to ChallengeNFT.
@@ -108,7 +105,7 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
      * @param claim The claim amount struct containing user, amount, and nonce.
      * @param _to The address to mint tokens to.
      */
-    function mint(rewardTypes.claimAmount calldata claim,address _to) public nonReentrant{
+    function mint(rewardType.claimAmount calldata claim,address _to) public nonReentrant{
         if(msg.sender==address(0)){
             revert ZeroAddress();
         }
@@ -184,7 +181,7 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
      * @param challengeId The ID of the challenge to be concluded.
      * @param claim The claim amount struct containing user, amount, and nonce for verification.
      */
-    function concludeChallenge(uint256 challengeId,rewardTypes.claimAmount calldata claim)public nonReentrant{
+    function concludeChallenge(uint256 challengeId,rewardType.claimAmount calldata claim)public nonReentrant{
         if(msg.sender==address(0)){
             revert ZeroAddress();
         }
@@ -241,24 +238,14 @@ contract LMVToken is ERC20,EIP712,Ownable,ReentrancyGuard {
     }
 
 
-    function executeIfAASignatureMatch() internal pure returns(bool){
-        bytes32 hashStruct;
-        hashStruct=keccak256(
-            abi.encode(
-                keccak256(
-                    "ClaimAmount(address Owner,address _user,uint256 amount,uint256 nonce)"
-                )
-            )
-        );
-        return true;
-    }
+    
 
     /**
      * @dev Verifies if the signature matches the provided claim amount by hashing the domain, claim struct, and recovering the signer.
      * @param claim The claim amount struct containing user, amount, nonce, v, r, and s.
      * @return bool indicating if the signature matches the owner's signature.
      */
-    function executeIfSignatureMatch(rewardTypes.claimAmount calldata claim)internal view returns(bool){
+    function executeIfSignatureMatch(rewardType.claimAmount calldata claim)internal view returns(bool){
         bytes32 eip712DomainHash=domainHash();
         
         bytes32 hashStruct;
